@@ -20,6 +20,13 @@ assembler (stopgap until the RISC-V GCC toolchain is installed). Its
 encodings were checked against known instruction words, and its branch/jump
 offsets round-tripped through the model 2,000 times each.
 
+## Regression
+
+`./regress.sh` (Git Bash) or `regress.ps1` (PowerShell) runs everything
+below in one command and exits nonzero if anything fails. Checked by
+planting a bug (ADD off by one): both scripts exit 1; with it reverted, both
+exit 0.
+
 ## Official riscv-tests: `tb/test_riscv_tests.py`
 
 The 42 `rv32ui-p-*` tests from riscv-tests, built by `tests/build_rvtests.py`

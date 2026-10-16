@@ -9,6 +9,7 @@ with cocotb against a Python golden model and the official riscv-tests suite.
   in lockstep with the golden model
 - ✅ Lockstep co-simulation against a Python golden model, 10 directed programs
 - ✅ Mutation-tested testbench: see [docs/verification.md](docs/verification.md)
+- ✅ One-command regression: `./regress.sh` (about 45 seconds)
 - ⬜ 5-stage pipeline (Milestone 3)
 
 ## riscv-tests (rv32ui-p)
@@ -35,11 +36,19 @@ that it takes the correct misaligned-load trap.
 - `docs/`: worklog, bug catalog, verification write-up
 
 ## Running the tests
+One command runs the full regression: unit tests, directed lockstep
+programs, and the official riscv-tests (built fresh each run). It also fetches
+the riscv-tests submodule on a fresh clone. Exit code 0 means everything passed.
 ```bash
-git submodule update --init --recursive   # first time only
-source env.sh                             # Git Bash; in PowerShell use: . .\env.ps1
-pytest tb/ -v                             # everything, including building riscv-tests
+./regress.sh                # Git Bash
 ```
+```powershell
+powershell -ExecutionPolicy Bypass -File .\regress.ps1   # PowerShell
+```
+Extra arguments go to pytest, e.g. `./regress.sh -x` stops at the first
+failing testbench. To run pieces by hand, `source env.sh` (or `. .\env.ps1`)
+then `pytest tb/test_core.py -v`.
+
 Waveforms land in `sim_build/<build>/`. Open them with `gtkwave`. When a
 riscv-test fails, its disassembly is in `tests/build/rv32ui-p-<name>.dump`.
 

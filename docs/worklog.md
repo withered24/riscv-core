@@ -26,3 +26,6 @@
 - No new bugs found this milestone. The single-cycle core is simple enough
   that the directed tests had already shaken out the datapath; expect the
   pipeline to be different.
+- Added `regress.sh` / `regress.ps1`: the whole regression in one command
+  (fetches the submodule on a fresh clone, builds riscv-tests, runs every
+  testbench). Checked that a planted bug makes both exit 1. Milestone 2 done.
