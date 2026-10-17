@@ -6,5 +6,4 @@ results.xml
 *.fst
 tests/build/
 *.result.xml
-formal/core_*/
-formal/core/
+formal/*/
