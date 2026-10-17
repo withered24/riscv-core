@@ -1,9 +1,9 @@
-"""Directed co-simulation tests for the single-cycle core.
+"""Directed co-simulation tests, run on both cores (pipelined and single-cycle).
 
 Every program runs on the RTL core and on the Python golden model (iss.py)
-in lockstep. Each cycle, the testbench compares what the core is doing (its
-trace_* outputs: pc, instruction, register write, memory write) against what
-the model did for the same instruction. The first disagreement fails the
+in lockstep. Each time the core retires an instruction, the testbench
+compares its trace_* outputs (pc, instruction, register write, memory
+write) against what the model did for the same instruction. The first disagreement fails the
 test with the instruction that caused it.
 
 On top of that, each test checks a few known answers worked out by hand, so
@@ -15,7 +15,8 @@ Run with:   pytest tb/test_core.py -v
 import cocotb
 
 from asm import assemble
-from cosim import CORE_SOURCES, MEM_WORDS, dut_reg, dut_word, load_and_reset, lockstep
+from cosim import (CORE_SOURCES, MEM_WORDS, dut_reg, dut_word, load_and_reset, lockstep,
+                   selected_cores)
 from iss import ISS, MACHINE_ECALL, MASK
 from runner import run
 
@@ -32,9 +33,10 @@ async def run_program(dut, source: str, max_steps: int = 20_000) -> ISS:
     def no_unexpected_traps(r):
         assert r.cause == MACHINE_ECALL,             f"unexpected trap, cause {r.cause}, at pc {r.pc:#010x} (instr {r.instr:#010x})"
 
-    n = await lockstep(dut, iss, stop=lambda r: iss.halted, max_steps=max_steps,
-                       on_trap=no_unexpected_traps)
-    dut._log.info(f"ECALL after {n} instructions, all matched the model")
+    st = await lockstep(dut, iss, stop=lambda r: iss.halted, max_steps=max_steps,
+                        on_trap=no_unexpected_traps)
+    dut._log.info(f"ECALL after {st.instructions} instructions in {st.cycles} cycles "
+                  f"(CPI {st.cpi:.2f}), all matched the model")
     return iss
 
 
@@ -306,4 +308,5 @@ async def test_bubble_sort(dut):
 
 
 def test_core():
-    run("tb_top", CORE_SOURCES, "test_core")
+    for name, defines in selected_cores().items():
+        run("tb_top", CORE_SOURCES, "test_core", defines=defines, build_name=f"tb_top_{name}")

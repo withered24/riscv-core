@@ -1,12 +1,17 @@
 // sim_mem.sv — simulation-only unified memory (code + data in one array)
 //
-// Combinational reads on both ports, byte-enabled synchronous write.
+// Byte-enabled synchronous write. Reads are combinational (SYNC_READ = 0,
+// for the single-cycle core) or registered like FPGA block RAM
+// (SYNC_READ = 1, for the pipeline): the address is captured at the clock
+// edge and the data appears after it. A registered read in the same cycle
+// as a write to that word returns the OLD data (read-before-write).
 // The address is taken modulo the memory size, so a program linked at
 // 0x8000_0000 (where riscv-tests live) lands at index 0 too.
 // The testbench loads programs by writing `mem` directly through cocotb.
 
 module sim_mem #(
-    parameter int WORDS = 16384           // 64 KiB
+    parameter int WORDS = 16384,          // 64 KiB
+    parameter bit SYNC_READ = 1'b0
 ) (
     input  logic        clk,
 
@@ -27,8 +32,17 @@ module sim_mem #(
         for (int i = 0; i < WORDS; i++) mem[i] = 32'd0;
     end
 
-    assign irdata = mem[iaddr[AW+1:2]];
-    assign drdata = mem[daddr[AW+1:2]];
+    generate
+        if (SYNC_READ) begin : g_sync
+            always_ff @(posedge clk) begin
+                irdata <= mem[iaddr[AW+1:2]];
+                drdata <= mem[daddr[AW+1:2]];
+            end
+        end else begin : g_comb
+            assign irdata = mem[iaddr[AW+1:2]];
+            assign drdata = mem[daddr[AW+1:2]];
+        end
+    endgenerate
 
     always_ff @(posedge clk) begin
         for (int b = 0; b < 4; b++)

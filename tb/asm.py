@@ -1,8 +1,11 @@
 """A tiny RV32I assembler, so tests can be written as assembly text.
 
-This is a stopgap until the RISC-V GCC toolchain is installed (Milestone 2);
-it covers every RV32I instruction plus a handful of common pseudo-instructions
-(nop, li, mv, not, neg, j, jr, ret, beqz, bnez, call-free `jal label`).
+Written before the RISC-V GCC toolchain was installed, and kept because
+tests (and the random program generator) can build programs as strings with
+no toolchain round trip. It covers every RV32I instruction, Zicsr (csrrw/s/c,
+the immediate forms, and csrr/csrw/csrs/csrc/csrwi), mret, wfi, fence.i, and
+a handful of common pseudo-instructions (nop, li, mv, not, neg, j, jr, ret,
+beqz, bnez, call-free `jal label`). CSRs can be named (mscratch) or numbered.
 
     words = assemble('''
         addi  t0, zero, 5
@@ -31,6 +34,11 @@ SHIFT_OPS = {"slli": (1, 0x00), "srli": (5, 0x00), "srai": (5, 0x20)}
 LOADS = {"lb": 0, "lh": 1, "lw": 2, "lbu": 4, "lhu": 5}
 STORES = {"sb": 0, "sh": 1, "sw": 2}
 BRANCHES = {"beq": 0, "bne": 1, "blt": 4, "bge": 5, "bltu": 6, "bgeu": 7}
+CSR_OPS = {"csrrw": 1, "csrrs": 2, "csrrc": 3, "csrrwi": 5, "csrrsi": 6, "csrrci": 7}
+CSRS = {"mstatus": 0x300, "misa": 0x301, "mie": 0x304, "mtvec": 0x305,
+        "mscratch": 0x340, "mepc": 0x341, "mcause": 0x342, "mtval": 0x343,
+        "mip": 0x344, "mvendorid": 0xF11, "marchid": 0xF12, "mimpid": 0xF13,
+        "mhartid": 0xF14, "satp": 0x180}
 
 
 class AsmError(Exception):
@@ -91,6 +99,21 @@ def enc_j(rd, off):
     o = off & 0x1FFFFF
     return (((o >> 20) & 1) << 31) | (((o >> 1) & 0x3FF) << 21) | (((o >> 11) & 1) << 20) \
         | (((o >> 12) & 0xFF) << 12) | (rd << 7) | 0x6F
+
+
+def _csr(tok: str) -> int:
+    tok = tok.strip().lower()
+    num = CSRS[tok] if tok in CSRS else _int(tok)
+    if not 0 <= num <= 0xFFF:
+        raise AsmError(f"CSR number {num:#x} must be 0..0xFFF")
+    return num
+
+
+def enc_csr(f3, rd, csr, src):
+    """src is rs1 for csrrw/s/c, the 5-bit zero-extended uimm for the *i forms."""
+    if not 0 <= src <= 31:
+        raise AsmError("CSR source must be a register or uimm 0..31")
+    return (csr << 20) | (src << 15) | (f3 << 12) | (rd << 7) | 0x73
 
 
 def _li_parts(value: int) -> tuple[int, int]:
@@ -195,6 +218,22 @@ def _encode(mn, a, pc, target) -> list[int]:
         return [0x0010_0073]
     if mn == "fence":
         return [0x0FF0_000F]
+    if mn == "fence.i":
+        return [0x0000_100F]
+    if mn == "mret":
+        return [0x3020_0073]
+    if mn == "wfi":
+        return [0x1050_0073]
+    if mn in CSR_OPS:                         # csrrw rd, csr, rs1  /  csrrwi rd, csr, uimm
+        f3 = CSR_OPS[mn]
+        src = _int(a[2]) if f3 & 4 else _reg(a[2])
+        return [enc_csr(f3, _reg(a[0]), _csr(a[1]), src)]
+    if mn == "csrr":                          # csrrs rd, csr, x0
+        return [enc_csr(2, _reg(a[0]), _csr(a[1]), 0)]
+    if mn in ("csrw", "csrs", "csrc"):        # csrrw/s/c x0, csr, rs1
+        return [enc_csr({"csrw": 1, "csrs": 2, "csrc": 3}[mn], 0, _csr(a[0]), _reg(a[1]))]
+    if mn == "csrwi":
+        return [enc_csr(5, 0, _csr(a[0]), _int(a[1]))]
 
     # ---- pseudo-instructions ----
     if mn == "nop":

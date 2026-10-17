@@ -58,4 +58,31 @@ package rv32i_pkg;
     localparam logic [31:0] CAUSE_MISALIGNED_STORE = 32'd6;
     localparam logic [31:0] CAUSE_MACHINE_ECALL    = 32'd11;
 
+    // ---- pipeline (core.sv) ----
+    // Forwarding-mux selects for an EX operand.
+    localparam logic [1:0] FWD_NONE  = 2'd0;  // value read in ID (regfile + WB bypass)
+    localparam logic [1:0] FWD_EXMEM = 2'd1;  // result of the instruction one ahead
+    localparam logic [1:0] FWD_MEMWB = 2'd2;  // result of the instruction two ahead
+
+    // Every control signal the decoder produces, bundled so a pipeline
+    // register can carry them as one field and a bubble can zero them as one.
+    typedef struct packed {
+        logic       reg_write;
+        logic [1:0] a_sel;
+        logic       b_imm;
+        logic [3:0] alu_op;
+        logic       mem_read;
+        logic       mem_write;
+        logic [1:0] wb_sel;
+        logic       branch;
+        logic       jal;
+        logic       jalr;
+        logic       fence_i;
+        logic       csr_en;
+        logic       ecall;
+        logic       ebreak;
+        logic       mret;
+        logic       illegal;
+    } ctrl_t;
+
 endpackage

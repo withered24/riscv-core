@@ -18,7 +18,8 @@ from pathlib import Path
 
 import cocotb
 
-from cosim import CORE_SOURCES, MEM_WORDS, load_and_reset, lockstep, words_from_bytes
+from cosim import (CORE_SOURCES, MEM_WORDS, load_and_reset, lockstep, selected_cores,
+                   words_from_bytes)
 from iss import ILLEGAL_INSTR, ISS, MACHINE_ECALL, MISALIGNED_LOAD
 from runner import REPO, run
 
@@ -55,8 +56,9 @@ async def run_rvtest(dut, name: str, on_trap=None) -> int:
             return True
         return False
 
-    n = await lockstep(dut, iss, stop=wrote_tohost, on_trap=on_trap)
-    dut._log.info(f"{name}: tohost={result['value']:#x} after {n} instructions")
+    st = await lockstep(dut, iss, stop=wrote_tohost, on_trap=on_trap)
+    dut._log.info(f"{name}: tohost={result['value']:#x} after {st.instructions} "
+                  f"instructions, {st.cycles} cycles (CPI {st.cpi:.2f})")
     return result["value"]
 
 
@@ -84,5 +86,6 @@ def test_riscv_tests():
     import subprocess
     import sys
     subprocess.run([sys.executable, str(REPO / "tests" / "build_rvtests.py")], check=True)
-    run("tb_top", CORE_SOURCES, "test_riscv_tests",
-        parameters={"RESET_PC": BASE}, build_name="tb_top_rvtests")
+    for core, defines in selected_cores().items():
+        run("tb_top", CORE_SOURCES, "test_riscv_tests", parameters={"RESET_PC": BASE},
+            defines=defines, build_name=f"tb_top_rvtests_{core}")

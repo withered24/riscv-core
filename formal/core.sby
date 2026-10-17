@@ -1,0 +1,41 @@
+# Formal check of the pipelined core's SVA properties (rtl/core.sv, under
+# `ifdef FORMAL). Instruction and data memory read data are free inputs, so
+# the properties are checked for every possible instruction stream and every
+# possible load value, not just the programs the simulations run.
+#
+#   source env.sh && cd formal && sby -f core.sby     # both tasks, ~20 s
+#   sby -f core.sby prove                             # just the asserts
+#
+# prove: k-induction (smtbmc). Passing means every assert holds in every
+#        reachable state, with no depth limit: the base case is a BMC from
+#        reset, and the induction step shows that 20 good cycles in a row
+#        (from any state) are always followed by a good one.
+# cover: every cover statement can be reached; sby writes a trace for each.
+
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+prove: depth 20
+cover: mode cover
+cover: depth 20
+
+[engines]
+smtbmc bitwuzla
+
+[script]
+plugin -i slang
+read_slang -D FORMAL rv32i_pkg.sv regfile.sv immgen.sv alu.sv branch_unit.sv decoder.sv csr.sv core.sv --top core
+prep -top core
+
+[files]
+../rtl/rv32i_pkg.sv
+../rtl/regfile.sv
+../rtl/immgen.sv
+../rtl/alu.sv
+../rtl/branch_unit.sv
+../rtl/decoder.sv
+../rtl/csr.sv
+../rtl/core.sv

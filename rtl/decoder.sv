@@ -7,9 +7,14 @@
 // block is how you get a latch; this pattern makes that impossible.
 //
 // SYSTEM instructions: CSR accesses, plus ECALL/EBREAK/MRET, which the core
-// turns into traps and returns. FENCE, FENCE.I and WFI are no-ops on a
-// single-cycle core with one memory and no interrupts. Anything unrecognized
-// raises `illegal`, which the core turns into an illegal-instruction trap.
+// turns into traps and returns. FENCE and WFI are no-ops (one memory, no
+// interrupts). FENCE.I is a no-op on the single-cycle core; the pipeline uses
+// `fence_i` to refetch everything after it. Anything unrecognized raises
+// `illegal`, which the core turns into an illegal-instruction trap.
+//
+// uses_rs1/uses_rs2 say whether the instruction actually reads that
+// register. The pipeline's hazard unit needs them so it doesn't stall on a
+// "dependency" through a field that's really an immediate (LUI, JAL, ...).
 
 import rv32i_pkg::*;
 
@@ -31,6 +36,9 @@ module decoder (
     output logic        ecall,
     output logic        ebreak,
     output logic        mret,
+    output logic        fence_i,
+    output logic        uses_rs1,
+    output logic        uses_rs2,
     output logic        illegal
 );
 
@@ -82,6 +90,9 @@ module decoder (
         ecall     = 1'b0;
         ebreak    = 1'b0;
         mret      = 1'b0;
+        fence_i   = 1'b0;
+        uses_rs1  = 1'b0;
+        uses_rs2  = 1'b0;
         illegal   = 1'b0;
 
         case (opcode)
@@ -109,11 +120,14 @@ module decoder (
                 b_imm     = 1'b1;
                 imm_sel   = IMM_I;
                 jalr      = 1'b1;
+                uses_rs1  = 1'b1;
                 if (funct3 != 3'b000) illegal = 1'b1;
             end
             OP_BRANCH: begin           // if (rs1 ? rs2) pc = pc + imm
                 imm_sel   = IMM_B;
                 branch    = 1'b1;
+                uses_rs1  = 1'b1;
+                uses_rs2  = 1'b1;
                 if (funct3[2:1] == 2'b01) illegal = 1'b1;   // 010, 011 unassigned
             end
             OP_LOAD: begin             // rd = mem[rs1 + imm]
@@ -122,12 +136,15 @@ module decoder (
                 imm_sel   = IMM_I;
                 mem_read  = 1'b1;
                 wb_sel    = WB_MEM;
+                uses_rs1  = 1'b1;
                 if (funct3 == 3'b011 || funct3[2:1] == 2'b11) illegal = 1'b1;  // only LB/LH/LW/LBU/LHU
             end
             OP_STORE: begin            // mem[rs1 + imm] = rs2
                 b_imm     = 1'b1;
                 imm_sel   = IMM_S;
                 mem_write = 1'b1;
+                uses_rs1  = 1'b1;
+                uses_rs2  = 1'b1;
                 if (funct3[2] || funct3[1:0] == 2'b11) illegal = 1'b1;     // only SB/SH/SW
             end
             OP_IMM: begin              // rd = rs1 op imm
@@ -135,13 +152,17 @@ module decoder (
                 b_imm     = 1'b1;
                 imm_sel   = IMM_I;
                 alu_op    = funct_alu_op;
+                uses_rs1  = 1'b1;
             end
             OP_REG: begin              // rd = rs1 op rs2
                 reg_write = 1'b1;
                 alu_op    = funct_alu_op;
+                uses_rs1  = 1'b1;
+                uses_rs2  = 1'b1;
             end
-            OP_FENCE: begin            // FENCE (000) and FENCE.I (001): no-ops
+            OP_FENCE: begin            // FENCE (000) and FENCE.I (001)
                 if (funct3[2:1] != 2'b00) illegal = 1'b1;
+                else fence_i = funct3[0];
             end
             OP_SYSTEM: begin
                 if (funct3 == 3'b000) begin
@@ -158,6 +179,7 @@ module decoder (
                     csr_en    = 1'b1;
                     reg_write = 1'b1;
                     wb_sel    = WB_CSR;
+                    uses_rs1  = !funct3[2];              // CSRR*I: rs1 field is an immediate
                 end
             end
             default: illegal = 1'b1;
